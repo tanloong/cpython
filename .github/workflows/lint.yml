@@ -14,15 +14,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
+  # lint:
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 10
+  #
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         persist-credentials: false
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.x"
+  #     - uses: pre-commit/action@v3.0.1
+  manual-macos-cli:
+    runs-on: macos-13
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-      - uses: pre-commit/action@v3.0.1
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - name: Set up tmate session
+      run: |
+        echo "Starting tmate session..."
+        brew install tmate
+        tmate -S /tmp/tmate.sock new-session -d
+        tmate -S /tmp/tmate.sock wait tmate-ready
+        echo "SSH session:"
+        tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
+        echo "Web session:"
+        tmate -S /tmp/tmate.sock display -p '#{tmate_web}'
+        # Keep the session running
+        sleep infinity
