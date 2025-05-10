@@ -205,42 +205,52 @@ class InteractiveSession(unittest.TestCase):
             self.assertIn('\x1b[1;35mOperationalError (SQLITE_ERROR)\x1b[0m: '
                           '\x1b[35mnear "sel": syntax error\x1b[0m', err)
 
-@requires_subprocess()
+@force_not_colorized_test_class
 class CompletionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         readline = import_module("readline")
         if readline.backend == "editline":
             raise unittest.SkipTest("libedit readline is not supported")
+        
+    def run_cli(self, *args, commands=()):
+        with (
+            captured_stdin() as stdin,
+            captured_stdout() as stdout,
+            captured_stderr() as stderr,
+            self.assertRaises(SystemExit) as cm
+        ):
+            for cmd in commands:
+                stdin.write(cmd + "\n")
+            stdin.seek(0)
+            cli(args)
+
+        out = stdout.getvalue()
+        err = stderr.getvalue()
+        self.assertEqual(cm.exception.code, 0,
+                         f"Unexpected failure: {args=}\n{out}\n{err}")
+        return out, err
 
     def test_keyword_completion(self):
-        script = "from sqlite3.__main__ import main; main()"
         # List candidates starting with 'S', there should be multiple matches.
-        input = b"S\t\tEL\t 1;\n.quit\n"
-        output = run_pty(script, input, env={"NO_COLOR": "1"})
+        output, err = self.run_cli("S\t\tEL\t 1;\n.quit\n")
         self.assertIn(b"SELECT", output)
         self.assertIn(b"SET", output)
         self.assertIn(b"SAVEPOINT", output)
         self.assertIn(b"(1,)", output)
 
         # Keywords are completed in upper case for even lower case user input
-        input = b"sel\t\t 1;\n.quit\n"
-        output = run_pty(script, input)
-        output = re.sub(rb"\x1b\[[0-9;]*[mK]", b"", output)
+        output, err = self.run_cli("sel\t\t 1;\n.quit\n")
         self.assertIn(b"SELECT", output)
         self.assertIn(b"(1,)", output)
 
     def test_nothing_to_complete(self):
-        script = "from sqlite3.__main__ import main; main()"
-        input = b"zzzz\t;\n.quit\n"
-        output = run_pty(script, input, env={"NO_COLOR": "1"})
+        output, err = self.run_cli("zzzz\t;\n.quit\n")
         for keyword in KEYWORDS:
             self.assertNotRegex(output, rf"\b{keyword}\b".encode("utf-8"))
 
     def test_completion_order(self):
-        script = "from sqlite3.__main__ import main; main()"
-        input = b"S\t;\n.quit\n"
-        output = run_pty(script, input, env={"NO_COLOR": "1"})
+        output, err = self.run_cli("S\t;\n.quit\n")
         savepoint_idx = output.find(b"SAVEPOINT")
         select_idx = output.find(b"SELECT")
         set_idx = output.find(b"SET")
