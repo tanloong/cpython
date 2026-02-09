@@ -1930,21 +1930,25 @@ class TestWindowsConsoleEolWrap(TestCase):
 
         return console, wc
 
-    def test_normal_line_not_full(self):
+    def test_short_line_sets_posxy_normally(self):
         width = 10
+        y = 3
         console, wc = self._make_mock_console(width=width)
+        old_line = ""
         new_line = "a" * 3
         wc.WindowsConsole._WindowsConsole__write_changed_line(
-            console, 0, "", new_line, 0
+            console, y, old_line, new_line, 0
         )
-        self.assertEqual(console.posxy, (3, 0))
+        self.assertEqual(console.posxy, (3, y))
 
-    def test_exact_width_line_wrap_behavior(self):
+    def test_exact_width_line_does_not_wrap(self):
         width = 10
+        y = 3
         console, wc = self._make_mock_console(width=width)
+        old_line = ""
         new_line = "a" * width
 
         wc.WindowsConsole._WindowsConsole__write_changed_line(
-            console, 0, "", new_line, 0
+            console, y, old_line, new_line, 0
         )
-        self.assertEqual(console.posxy, (width - 1, 0))
+        self.assertEqual(console.posxy, (width - 1, y))
