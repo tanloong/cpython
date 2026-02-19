@@ -116,6 +116,10 @@ except ImportError:
         """
         from inspect import getattr_static, isfunction, ismethoddescriptor
         cls = type(obj)
+        if not isinstance(attr, str):
+            raise TypeError(
+                f"attribute name must be string, not '{type(attr).__name__}'"
+            )
         try:
             descr = getattr_static(cls, attr)
         except AttributeError:
