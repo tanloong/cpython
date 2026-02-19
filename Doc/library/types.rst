@@ -524,7 +524,7 @@ Additional Utility Classes and Functions
 .. function:: lookup_special_method(obj, attr, /)
 
    Do a method lookup in the type without looking in the instance dictionary
-   but still binding it to the instance. Returns None if the method is not
+   but still binding it to the instance. Returns ``None`` if the method is not
    found.
 
    .. versionadded:: next
