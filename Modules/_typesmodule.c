@@ -90,9 +90,9 @@ static struct PyModuleDef_Slot _typesmodule_slots[] = {
 
 static PyMethodDef _typesmodule_methods[] = {
     {"lookup_special_method", _types_lookup_special_method_impl, METH_VARARGS,
+     "lookup_special_method(obj, attr, /)\n--\n\n"
      "Do a method lookup in the type without looking in the instance "
-     "dictionary but still binding it to the instance. Returns None if the "
-     "method is not found."},
+     "dictionary. Returns None if the method is not found."},
     {NULL, NULL, 0, NULL}};
 
 static struct PyModuleDef typesmodule = {
