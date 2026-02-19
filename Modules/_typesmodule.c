@@ -8,14 +8,31 @@
 #include "pycore_unionobject.h"   // _PyUnion_Type
 #include "pycore_typeobject.h"    // _PyObject_LookupSpecialMethod
 #include "pycore_stackref.h"      // _PyStackRef
+#include "clinic/_typesmodule.c.h"
+
+/*[clinic input]
+module _types
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=530308b1011b659d]*/
+
+/*[clinic input]
+_types.lookup_special_method
+
+    obj: 'O'
+    attr: 'O'
+    /
+
+Lookup special method name `attr` on `obj`.
+
+Lookup method `attr` on `obj` without looking in the instance dictionary.
+Returns `None` if the method is not found.
+[clinic start generated code]*/
 
 static PyObject *
-_types_lookup_special_method_impl(PyObject *self, PyObject *args)
+_types_lookup_special_method_impl(PyObject *module, PyObject *obj,
+                                  PyObject *attr)
+/*[clinic end generated code: output=890e22cc0b8e0d34 input=f26012b0c90b81cd]*/
 {
-    PyObject *obj, *attr;
-    if (!PyArg_ParseTuple(args, "OO", &obj, &attr)) {
-        return NULL;
-    }
     if (!PyUnicode_Check(attr)) {
         PyErr_Format(PyExc_TypeError,
                      "attribute name must be string, not '%.200s'",
@@ -90,11 +107,9 @@ static struct PyModuleDef_Slot _typesmodule_slots[] = {
 };
 
 static PyMethodDef _typesmodule_methods[] = {
-    {"lookup_special_method", _types_lookup_special_method_impl, METH_VARARGS,
-     "lookup_special_method(obj, attr, /)\n--\n\n"
-     "Do a method lookup in the type without looking in the instance "
-     "dictionary. Returns None if the method is not found."},
-    {NULL, NULL, 0, NULL}};
+    _TYPES_LOOKUP_SPECIAL_METHOD_METHODDEF
+    {NULL, NULL, 0, NULL}
+};
 
 static struct PyModuleDef typesmodule = {
     .m_base = PyModuleDef_HEAD_INIT,
