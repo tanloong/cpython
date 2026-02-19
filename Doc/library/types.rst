@@ -527,7 +527,7 @@ Additional Utility Classes and Functions
    but still binding it to the instance. Returns None if the method is not
    found.
 
-   .. versionadded:: 3.15
+   .. versionadded:: next
 
 
 Coroutine Utility Functions
