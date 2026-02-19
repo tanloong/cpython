@@ -1064,6 +1064,8 @@ types
   This represents the type of the :attr:`frame.f_locals` attribute,
   as described in :pep:`667`.
 
+* Expose ``_PyObject_LookupSpecialMethod()`` as
+  :func:`types.lookup_special_method(obj, attr)`.
 
 unicodedata
 -----------
