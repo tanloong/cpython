@@ -10,8 +10,35 @@ PyDoc_STRVAR(_types_lookup_special_method__doc__,
 "\n"
 "Lookup special method name `attr` on `obj`.\n"
 "\n"
-"Lookup method `attr` on `obj` without looking in the instance dictionary.\n"
-"Returns `None` if the method is not found.");
+"Lookup method `attr` on `obj` without looking in the instance\n"
+"dictionary. For methods defined in class `__dict__` or `__slots__`, it\n"
+"returns the unbound function (descriptor), not a bound method. The\n"
+"caller is responsible for passing the object as the first argument when\n"
+"calling it:\n"
+"\n"
+"    class A:\n"
+"        def __enter__(self):\n"
+"            pass\n"
+"\n"
+"    class B:\n"
+"        __slots__ = (\"__enter__\",)\n"
+"\n"
+"        def __init__(self):\n"
+"            def __enter__(self):\n"
+"                pass\n"
+"            self.__enter__ = __enter__\n"
+"\n"
+"    a = A()\n"
+"    b = B()\n"
+"    enter_a = types.lookup_special_method(a, \"__enter__\")\n"
+"    enter_b = types.lookup_special_method(b, \"__enter__\")\n"
+"\n"
+"    result_a = enter_a(a)\n"
+"    result_b = enter_b(b)\n"
+"\n"
+"For other descriptors (property, etc.), it returns the result of the\n"
+"descriptor\'s `__get__` method. Returns `None` if the method is not\n"
+"found.");
 
 #define _TYPES_LOOKUP_SPECIAL_METHOD_METHODDEF    \
     {"lookup_special_method", _PyCFunction_CAST(_types_lookup_special_method), METH_FASTCALL, _types_lookup_special_method__doc__},
@@ -37,4 +64,4 @@ _types_lookup_special_method(PyObject *module, PyObject *const *args, Py_ssize_t
 exit:
     return return_value;
 }
-/*[clinic end generated code: output=5e1740bceb7577bc input=a9049054013a1b77]*/
+/*[clinic end generated code: output=11a3b8dd4cb5f673 input=a9049054013a1b77]*/

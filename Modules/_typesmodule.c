@@ -24,14 +24,41 @@ _types.lookup_special_method
 
 Lookup special method name `attr` on `obj`.
 
-Lookup method `attr` on `obj` without looking in the instance dictionary.
-Returns `None` if the method is not found.
+Lookup method `attr` on `obj` without looking in the instance
+dictionary. For methods defined in class `__dict__` or `__slots__`, it
+returns the unbound function (descriptor), not a bound method. The
+caller is responsible for passing the object as the first argument when
+calling it:
+
+    class A:
+        def __enter__(self):
+            pass
+
+    class B:
+        __slots__ = ("__enter__",)
+
+        def __init__(self):
+            def __enter__(self):
+                pass
+            self.__enter__ = __enter__
+
+    a = A()
+    b = B()
+    enter_a = types.lookup_special_method(a, "__enter__")
+    enter_b = types.lookup_special_method(b, "__enter__")
+
+    result_a = enter_a(a)
+    result_b = enter_b(b)
+
+For other descriptors (property, etc.), it returns the result of the
+descriptor's `__get__` method. Returns `None` if the method is not
+found.
 [clinic start generated code]*/
 
 static PyObject *
 _types_lookup_special_method_impl(PyObject *module, PyObject *obj,
                                   PyObject *attr)
-/*[clinic end generated code: output=890e22cc0b8e0d34 input=f26012b0c90b81cd]*/
+/*[clinic end generated code: output=890e22cc0b8e0d34 input=fca9cb0e313a7848]*/
 {
     if (!PyUnicode_Check(attr)) {
         PyErr_Format(PyExc_TypeError,
