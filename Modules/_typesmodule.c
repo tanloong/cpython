@@ -33,7 +33,7 @@ _types_lookup_special_method_impl(PyObject *self, PyObject *args)
         Py_RETURN_NONE;
     }
     PyObject *method = PyStackRef_AsPyObjectSteal(method_and_self[0]);
-    return Py_BuildValue("O", method);
+    return method;
 }
 
 static int
