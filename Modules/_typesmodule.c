@@ -12,27 +12,28 @@
 static PyObject *
 _types_lookup_special_method_impl(PyObject *self, PyObject *args)
 {
-  PyObject *obj, *attr;
-  if (!PyArg_ParseTuple(args, "OO", &obj, &attr)) {
-    return NULL;
-  }
-  if (!PyUnicode_Check(attr)) {
-    PyErr_Format(PyExc_TypeError, "attribute name must be string, not '%.200s'",
-                 Py_TYPE(attr)->tp_name);
-    return NULL;
-  }
-  _PyStackRef method_and_self[2];
-  method_and_self[0] = PyStackRef_NULL;
-  method_and_self[1] = PyStackRef_FromPyObjectBorrow(obj);
-  int result = _PyObject_LookupSpecialMethod(attr, method_and_self);
-  if (result == -1) {
-    return NULL;
-  }
-  if (result == 0) {
-    Py_RETURN_NONE;
-  }
-  PyObject *method = PyStackRef_AsPyObjectSteal(method_and_self[0]);
-  return Py_BuildValue("O", method);
+    PyObject *obj, *attr;
+    if (!PyArg_ParseTuple(args, "OO", &obj, &attr)) {
+        return NULL;
+    }
+    if (!PyUnicode_Check(attr)) {
+        PyErr_Format(PyExc_TypeError,
+                     "attribute name must be string, not '%.200s'",
+                     Py_TYPE(attr)->tp_name);
+        return NULL;
+    }
+    _PyStackRef method_and_self[2];
+    method_and_self[0] = PyStackRef_NULL;
+    method_and_self[1] = PyStackRef_FromPyObjectBorrow(obj);
+    int result = _PyObject_LookupSpecialMethod(attr, method_and_self);
+    if (result == -1) {
+        return NULL;
+    }
+    if (result == 0) {
+        Py_RETURN_NONE;
+    }
+    PyObject *method = PyStackRef_AsPyObjectSteal(method_and_self[0]);
+    return Py_BuildValue("O", method);
 }
 
 static int
