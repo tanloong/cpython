@@ -770,7 +770,7 @@ class TypesTests(unittest.TestCase):
 
     def test_lookup_special_method(self):
         c_lookup = getattr(c_types, "lookup_special_method")
-        py_lookup = getattr(types, "lookup_special_method")
+        py_lookup = getattr(py_types, "lookup_special_method")
         self._test_lookup_special_method(c_lookup)
         self._test_lookup_special_method(py_lookup)
 
