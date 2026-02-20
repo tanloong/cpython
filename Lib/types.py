@@ -110,11 +110,11 @@ except ImportError:
         >>> enter_b(b)
         'B.__enter__'
 
-        For other descriptors (property, etc.), it returns the result of the
-        descriptor's `__get__` method. Returns `None` if the method is not
-        found.
+        For other descriptors (classmethod, staticmethod, property, etc.), it
+        returns the result of the descriptor's `__get__` method. Returns `None`
+        if the method is not found.
         """
-        from inspect import getattr_static, isfunction, ismethoddescriptor
+        from inspect import getattr_static, isfunction
         cls = type(obj)
         if not isinstance(attr, str):
             raise TypeError(
@@ -125,7 +125,8 @@ except ImportError:
         except AttributeError:
             return None
         if hasattr(descr, "__get__"):
-            if isfunction(descr) or ismethoddescriptor(descr):
+            if isfunction(descr) or isinstance(descr,(
+                MethodDescriptorType, WrapperDescriptorType)):
                 # do not create bound method to mimic the behavior of
                 # _PyObject_LookupSpecialMethod
                 return descr

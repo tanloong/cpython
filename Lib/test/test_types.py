@@ -747,12 +747,15 @@ class TypesTests(unittest.TestCase):
         cm1 = CM1()
         meth = lookup(cm1, "__enter__")
         self.assertIsNotNone(meth)
+        with self.assertRaisesRegex(
+                TypeError, "missing 1 required positional argument") as cm:
+            meth()
         self.assertEqual(meth(cm1), "__enter__ from class __dict__")
 
         meth = lookup(cm1, "__missing__")
         self.assertIsNone(meth)
 
-        with self.assertRaises(TypeError):
+        with self.assertRaisesRegex(TypeError, "attribute name must be string"):
             lookup(cm1, 123)
 
         cm2 = CM2()
@@ -767,6 +770,27 @@ class TypesTests(unittest.TestCase):
         meth = lookup([], "__len__")
         self.assertIsNotNone(meth)
         self.assertEqual(meth([]), 0)
+
+        class Person:
+            @classmethod
+            def hi(cls):
+                return f"hi from {cls.__name__}"
+            @staticmethod
+            def hello():
+                return "hello from static method"
+            @property
+            def name(self):
+                return "name from property"
+        p = Person()
+        meth = lookup(p, "hi")
+        self.assertIsNotNone(meth)
+        self.assertEqual(meth(), "hi from Person")
+
+        meth = lookup(p, "hello")
+        self.assertIsNotNone(meth)
+        self.assertEqual(meth(), "hello from static method")
+
+        self.assertEqual(lookup(p, "name"), "name from property")
 
     def test_lookup_special_method(self):
         c_lookup = getattr(c_types, "lookup_special_method")
