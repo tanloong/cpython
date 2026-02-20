@@ -114,7 +114,7 @@ except ImportError:
         returns the result of the descriptor's `__get__` method. Returns `None`
         if the method is not found.
         """
-        from inspect import getattr_static, isfunction
+        from inspect import getattr_static
         cls = type(obj)
         if not isinstance(attr, str):
             raise TypeError(
@@ -125,8 +125,8 @@ except ImportError:
         except AttributeError:
             return None
         if hasattr(descr, "__get__"):
-            if isfunction(descr) or isinstance(descr,(
-                MethodDescriptorType, WrapperDescriptorType)):
+            if isinstance(descr, (
+                FunctionType, MethodDescriptorType, WrapperDescriptorType)):
                 # do not create bound method to mimic the behavior of
                 # _PyObject_LookupSpecialMethod
                 return descr
