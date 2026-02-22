@@ -6,78 +6,44 @@
 #include "pycore_namespace.h"     // _PyNamespace_Type
 #include "pycore_object.h"        // _PyNone_Type, _PyNotImplemented_Type
 #include "pycore_unionobject.h"   // _PyUnion_Type
-#include "pycore_typeobject.h"    // _PyObject_LookupSpecialMethod
-#include "pycore_stackref.h"      // _PyStackRef
-#include "clinic/_typesmodule.c.h"
+#include "pycore_typeobject.h"    // _PyObject_LookupSpecial
+#include "pycore_modsupport.h"    // _PyArg_CheckPositional
 
-/*[clinic input]
-module _types
-[clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=530308b1011b659d]*/
-
-/*[clinic input]
-_types.lookup_special_method
-
-    obj: 'O'
-    attr: 'O'
-    /
-
-Lookup special method name `attr` on `obj`.
-
-Lookup method `attr` on `obj` without looking in the instance
-dictionary. For methods defined in class `__dict__` or `__slots__`, it
-returns the unbound function (descriptor), not a bound method. The
-caller is responsible for passing the object as the first argument when
-calling it:
-
->>> class A:
-...    def __enter__(self):
-...        return "A.__enter__"
-...
->>> class B:
-...    __slots__ = ("__enter__",)
-...    def __init__(self):
-...        def __enter__(self):
-...            return "B.__enter__"
-...        self.__enter__ = __enter__
-...
->>> a = A()
->>> b = B()
->>> enter_a = types.lookup_special_method(a, "__enter__")
->>> enter_b = types.lookup_special_method(b, "__enter__")
->>> enter_a(a)
-'A.__enter__'
->>> enter_b(b)
-'B.__enter__'
-
-For other descriptors (property, etc.), it returns the result of the
-descriptor's `__get__` method. Returns `None` if the method is not
-found.
-[clinic start generated code]*/
+PyDoc_STRVAR(lookup_special_doc,
+"lookup_special(object, name[, default], /)\n\
+\n\
+Lookup method name `name` on `object` skipping the instance dictionary.\n\
+`name` must be a string. If the named special attribute does not\n\
+exist,`default` is returned if provided, otherwise AttributeError is raised.");
 
 static PyObject *
-_types_lookup_special_method_impl(PyObject *module, PyObject *obj,
-                                  PyObject *attr)
-/*[clinic end generated code: output=890e22cc0b8e0d34 input=e317288370125cd5]*/
+_types_lookup_special_impl(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
 {
-    if (!PyUnicode_Check(attr)) {
+    PyObject *v, *name, *result;
+
+    if (!_PyArg_CheckPositional("lookup_special", nargs, 2, 3))
+        return NULL;
+
+    v = args[0];
+    name = args[1];
+    if (!PyUnicode_Check(name)) {
         PyErr_Format(PyExc_TypeError,
                      "attribute name must be string, not '%.200s'",
-                     Py_TYPE(attr)->tp_name);
+                     Py_TYPE(name)->tp_name);
         return NULL;
     }
-    _PyStackRef method_and_self[2];
-    method_and_self[0] = PyStackRef_NULL;
-    method_and_self[1] = PyStackRef_FromPyObjectBorrow(obj);
-    int result = _PyObject_LookupSpecialMethod(attr, method_and_self);
-    if (result == -1) {
-        return NULL;
+    result = _PyObject_LookupSpecial(v, name);
+    if (result == NULL) {
+        if (nargs > 2) {
+            PyObject *dflt = args[2];
+            return Py_NewRef(dflt);
+        } else {
+            PyErr_Format(PyExc_AttributeError,
+                         "'%.50s' object has no special attribute '%U'",
+                         Py_TYPE(v)->tp_name, name);
+        }
     }
-    if (result == 0) {
-        Py_RETURN_NONE;
-    }
-    PyObject *method = PyStackRef_AsPyObjectSteal(method_and_self[0]);
-    return method;
+    return result;
 }
 
 static int
@@ -134,9 +100,9 @@ static struct PyModuleDef_Slot _typesmodule_slots[] = {
 };
 
 static PyMethodDef _typesmodule_methods[] = {
-    _TYPES_LOOKUP_SPECIAL_METHOD_METHODDEF
-    {NULL, NULL, 0, NULL}
-};
+    {"lookup_special", _PyCFunction_CAST(_types_lookup_special_impl),
+     METH_FASTCALL, lookup_special_doc},
+    {NULL, NULL, 0, NULL}};
 
 static struct PyModuleDef typesmodule = {
     .m_base = PyModuleDef_HEAD_INIT,

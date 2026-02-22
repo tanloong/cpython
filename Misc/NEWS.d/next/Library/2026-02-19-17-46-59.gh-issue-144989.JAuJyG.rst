@@ -1,2 +1,1 @@
-Expose ``_PyObject_LookupSpecialMethod`` as
-:func:`types.lookup_special_method`.
+Expose ``_PyObject_LookupSpecial`` as :func:`types.lookup_special`.

@@ -81,57 +81,27 @@ except ImportError:
 
     del sys, _f, _g, _C, _c, _ag, _cell_factory  # Not for export
 
-    def lookup_special_method(obj, attr, /):
-        """Lookup special method name `attr` on `obj`.
+    def lookup_special(object, name, *args):
+        """Lookup method name `name` on `object` skipping the instance
+        dictionary.
 
-        Lookup method `attr` on `obj` without looking in the instance
-        dictionary. For methods defined in class `__dict__` or `__slots__`, it
-        returns the unbound function (descriptor), not a bound method. The
-        caller is responsible for passing the object as the first argument when
-        calling it:
-
-        >>> class A:
-        ...    def __enter__(self):
-        ...        return "A.__enter__"
-        ...
-        >>> class B:
-        ...    __slots__ = ("__enter__",)
-        ...    def __init__(self):
-        ...        def __enter__(self):
-        ...            return "B.__enter__"
-        ...        self.__enter__ = __enter__
-        ...
-        >>> a = A()
-        >>> b = B()
-        >>> enter_a = types.lookup_special_method(a, "__enter__")
-        >>> enter_b = types.lookup_special_method(b, "__enter__")
-        >>> enter_a(a)
-        'A.__enter__'
-        >>> enter_b(b)
-        'B.__enter__'
-
-        For other descriptors (classmethod, staticmethod, property, etc.), it
-        returns the result of the descriptor's `__get__` method. Returns `None`
-        if the method is not found.
+        `name` must be a string. If the named special attribute does not exist,
+        `default` is returned if provided, otherwise AttributeError is raised.
         """
         from inspect import getattr_static
-        cls = type(obj)
-        if not isinstance(attr, str):
+        cls = type(object)
+        if not isinstance(name, str):
             raise TypeError(
-                f"attribute name must be string, not '{type(attr).__name__}'"
+                f"attribute name must be string, not '{type(name).__name__}'"
             )
         try:
-            descr = getattr_static(cls, attr)
+            descr = getattr_static(cls, name)
         except AttributeError:
-            return None
+            if args:
+                return args[0]
+            raise
         if hasattr(descr, "__get__"):
-            if isinstance(descr, (
-                FunctionType, MethodDescriptorType, WrapperDescriptorType)):
-                # do not create bound method to mimic the behavior of
-                # _PyObject_LookupSpecialMethod
-                return descr
-            else:
-                return descr.__get__(obj, cls)
+            return descr.__get__(object, cls)
         return descr
 
 
