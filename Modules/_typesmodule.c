@@ -14,7 +14,7 @@ PyDoc_STRVAR(lookup_special_doc,
 \n\
 Lookup method name `name` on `object` skipping the instance dictionary.\n\
 `name` must be a string. If the named special attribute does not\n\
-exist,`default` is returned if provided, otherwise AttributeError is raised.");
+exist,`default` is returned if provided, otherwise `AttributeError` is raised.");
 
 static PyObject *
 _types_lookup_special_impl(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
