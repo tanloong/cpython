@@ -82,15 +82,15 @@ except ImportError:
 
     def enclose_lookup_special():
         _sentinel = object()
-    
+
         def lookup_special(object, name, default=_sentinel):
             """Lookup method name `name` on `object` skipping the instance
             dictionary.
-    
+
             `name` must be a string. If the named special attribute does not exist,
             `default` is returned if provided, otherwise AttributeError is raised.
             """
-    
+
             cls = type(object)
             if not isinstance(name, str):
                 raise TypeError(
@@ -105,7 +105,7 @@ except ImportError:
             if hasattr(descr, "__get__"):
                 return descr.__get__(object, cls)
             return descr
-    
+
         return lookup_special
 
     lookup_special = enclose_lookup_special()
