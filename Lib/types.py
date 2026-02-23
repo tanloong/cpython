@@ -99,7 +99,7 @@ except ImportError:
             try:
                 descr = inspect.getattr_static(cls, name)
             except AttributeError:
-                if not default is _sentinel:
+                if default is not _sentinel:
                     return default
                 raise
             if hasattr(descr, "__get__"):
@@ -110,7 +110,7 @@ except ImportError:
 
     lookup_special = enclose_lookup_special()
 
-    del sys, inspect _f, _g, _C, _c, _ag, _cell_factory  # Not for export
+    del sys, _f, _g, _C, _c, _ag, _cell_factory  # Not for export
 
 
 # Provide a PEP 3115 compliant mechanism for class creation
