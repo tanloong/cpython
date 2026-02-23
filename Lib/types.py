@@ -112,29 +112,6 @@ except ImportError:
 
     del sys, inspect _f, _g, _C, _c, _ag, _cell_factory  # Not for export
 
-    def lookup_special(object, name, *args):
-        """Lookup method name `name` on `object` skipping the instance
-        dictionary.
-
-        `name` must be a string. If the named special attribute does not exist,
-        `default` is returned if provided, otherwise AttributeError is raised.
-        """
-        from inspect import getattr_static
-        cls = type(object)
-        if not isinstance(name, str):
-            raise TypeError(
-                f"attribute name must be string, not '{type(name).__name__}'"
-            )
-        try:
-            descr = getattr_static(cls, name)
-        except AttributeError:
-            if args:
-                return args[0]
-            raise
-        if hasattr(descr, "__get__"):
-            return descr.__get__(object, cls)
-        return descr
-
 
 # Provide a PEP 3115 compliant mechanism for class creation
 def new_class(name, bases=(), kwds=None, exec_body=None):
