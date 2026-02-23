@@ -10,7 +10,6 @@ Define names for built-in types that aren't directly accessible as a builtin.
 try:
     from _types import *
 except ImportError:
-    import inspect
     import sys
 
     def _f(): pass
@@ -83,13 +82,14 @@ except ImportError:
     def enclose_lookup_special():
         _sentinel = object()
 
-        def lookup_special(object, name, default=_sentinel):
+        def lookup_special(object, name, default=_sentinel, /):
             """Lookup method name `name` on `object` skipping the instance
             dictionary.
 
             `name` must be a string. If the named special attribute does not exist,
             `default` is returned if provided, otherwise AttributeError is raised.
             """
+            import inspect
 
             cls = type(object)
             if not isinstance(name, str):
@@ -99,7 +99,7 @@ except ImportError:
             try:
                 descr = inspect.getattr_static(cls, name)
             except AttributeError:
-                if not default is _sentinel:
+                if default is not _sentinel:
                     return default
                 raise
             if hasattr(descr, "__get__"):
@@ -110,7 +110,7 @@ except ImportError:
 
     lookup_special = enclose_lookup_special()
 
-    del sys, inspect _f, _g, _C, _c, _ag, _cell_factory  # Not for export
+    del sys, enclose_lookup_special, _f, _g, _C, _c, _ag, _cell_factory  # Not for export
 
 
 # Provide a PEP 3115 compliant mechanism for class creation
