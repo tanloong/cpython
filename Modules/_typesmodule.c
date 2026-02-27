@@ -16,6 +16,7 @@ Lookup method name `name` on `object` skipping the instance dictionary.\n\
 `name` must be a string. If the named special attribute does not\n\
 exist,`default` is returned if provided, otherwise `AttributeError` is raised.");
 
+/* AC: cannot convert yet, as needs PEP 457 group support in inspect */
 static PyObject *
 _types_lookup_special_impl(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
 {
