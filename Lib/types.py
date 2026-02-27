@@ -10,7 +10,6 @@ Define names for built-in types that aren't directly accessible as a builtin.
 try:
     from _types import *
 except ImportError:
-    import inspect
     import sys
 
     def _f(): pass
