@@ -82,7 +82,7 @@ except ImportError:
     def enclose_lookup_special():
         _sentinel = object()
 
-        def lookup_special(object, name, default=_sentinel):
+        def lookup_special(object, name, default=_sentinel, /):
             """Lookup method name `name` on `object` skipping the instance
             dictionary.
 
