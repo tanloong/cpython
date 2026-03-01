@@ -6,6 +6,7 @@ the InteractiveConsole class from the 'code' stdlib module.
 """
 import sqlite3
 import sys
+import os
 
 from argparse import ArgumentParser
 from code import InteractiveConsole
@@ -14,6 +15,16 @@ from _colorize import get_theme, theme_no_color
 
 from ._completer import completer
 
+
+def _pyrepl_available():
+    """Return whether sqlite3 CLI should use _pyrepl for input."""
+    if not os.getenv("PYTHON_BASIC_REPL"):
+        try:
+            from _pyrepl.main import CAN_USE_PYREPL
+        except ImportError:
+            return False
+        return CAN_USE_PYREPL
+    return False
 
 def execute(c, sql, suppress_errors=True, theme=theme_no_color):
     """Helper that wraps execution of SQL code.
@@ -85,6 +96,61 @@ class SqliteInteractiveConsole(InteractiveConsole):
             execute(self._cur, source, theme=theme)
         return False
 
+    def interact(self, banner=None, exitmsg=""):
+        """Start the interactive REPL, using _pyrepl if available."""
+        if not _pyrepl_available():
+            return super().interact(banner=banner, exitmsg=exitmsg)
+
+        import _pyrepl.readline
+
+        # PyREPL requires a TTY
+        if not os.isatty(sys.stdin.fileno()):
+            return super().interact(banner=banner, exitmsg=exitmsg)
+
+        # Configure PyREPL
+        # Use specific delimiters suitable for SQL/CLI commands
+        config = _pyrepl.readline.ReadlineConfig(
+            completer_delims=frozenset(' \t\n`@$#%^&*()=+[{]}\\|;:\'",<>?')
+        )
+
+        try:
+            wrapper = _pyrepl.readline._ReadlineWrapper(
+                f_in=sys.stdin.fileno(),
+                f_out=sys.stdout.fileno(),
+                config=config
+            )
+        except ValueError:
+            # Fallback if wrapper fails to initialize
+            return super().interact(banner=banner, exitmsg=exitmsg)
+
+        from ._completer import _complete
+        # Set up completer for PyREPL
+        wrapper.set_completer(lambda text, state: _complete(self._con, text, state))
+
+        if banner:
+            print(banner)
+
+        try:
+            while True:
+                try:
+                    # Define the "more lines" predicate for multi-line input
+                    def more_lines(text):
+                        # Dot commands are single-line
+                        if text.startswith('.'):
+                            return False
+                        # SQL statements require checking completeness
+                        return not sqlite3.complete_statement(text)
+
+                    # Use PyREPL's multiline input
+                    line = wrapper.multiline_input(more_lines, sys.ps1, sys.ps2)
+                    # runsource handles execution and output
+                    self.runsource(line + '\n')
+                except EOFError:
+                    break
+        finally:
+            if exitmsg:
+                print(exitmsg)
+
 
 def main(*args):
     parser = ArgumentParser(
@@ -143,9 +209,13 @@ def main(*args):
             execute(con, args.sql, suppress_errors=False, theme=theme)
         else:
             # No SQL provided; start the REPL.
-            with completer(con):
-                console = SqliteInteractiveConsole(con, use_color=True)
+            console = SqliteInteractiveConsole(con, use_color=True)
+            if _pyrepl_available():
+                # PyREPL handles its own completion setup inside interact
                 console.interact(banner, exitmsg="")
+            else:
+                with completer(con):
+                    console.interact(banner, exitmsg="")
     finally:
         con.close()
 

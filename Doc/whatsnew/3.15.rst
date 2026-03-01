@@ -917,6 +917,8 @@ sqlite3
   * Table, index, trigger, view, column, function, and schema completion on <tab>.
     (Contributed by Long Tan in :gh:`136101`.)
 
+  * Use the new interactive shell as the default input shell.
+    (Contributed by Long Tan in :gh:``.)
 
 ssl
 ---
