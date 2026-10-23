@@ -32,7 +32,8 @@ def _complete(con, text, state):
             # escape '_' which can appear in attached database names
             select_clauses = (
                 f"""\
-                SELECT name || ' ' FROM \"{schema}\".sqlite_master
+                SELECT name || ' '
+                FROM \"{schema.replace('"', '""')}\".sqlite_master
                 WHERE name LIKE REPLACE(:text, '_', '^_') || '%' ESCAPE '^'"""
                 for schema in schemata
             )
@@ -46,8 +47,10 @@ def _complete(con, text, state):
             try:
                 select_clauses = (
                     f"""\
-                    SELECT pti.name || ' ' FROM "{schema}".sqlite_master AS sm
-                    JOIN pragma_table_xinfo(sm.name,'{schema}') AS pti
+                    SELECT pti.name || ' '
+                    FROM "{schema.replace('"', '""')}".sqlite_master AS sm
+                    JOIN pragma_table_xinfo(sm.name,
+                          '{schema.replace("'", "''")}') AS pti
                     WHERE sm.type IN ('table', 'view') AND
                     pti.name LIKE REPLACE(:text, '_', '^_') || '%' ESCAPE '^'"""
                     for schema in schemata

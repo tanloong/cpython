@@ -271,6 +271,12 @@ class Completion(unittest.TestCase):
 
     def test_complete_table_indexes_triggers_views(self):
         input_ = textwrap.dedent("""\
+            -- Database names containing double quotes are quoted in the
+            -- generated SQL: completing objects of such a schema must work,
+            -- and a crafted name must not inject a UNION SELECT clause.
+            ATTACH ':memory:' AS "evil""name";
+            CREATE TABLE "evil""name"._Evil_table (d);
+
             CREATE TABLE _Table (id);
             CREATE INDEX _Index ON _table (id);
             CREATE TRIGGER _Trigger BEFORE INSERT
@@ -304,6 +310,7 @@ class Completion(unittest.TestCase):
                 "_Attached_table",
                 "_Attached_trigger",
                 "_Attached_view",
+                "_Evil_table",
                 "_Index",
                 "_Table",
                 "_Temp_index",
@@ -365,6 +372,8 @@ class Completion(unittest.TestCase):
             ATTACH ':memory:' AS MixedCase;
             -- Test '_' is escaped in Like pattern filtering
             ATTACH ':memory:' AS _underscore;
+            -- Test is double quote is escaped
+            ATTACH ':memory:' AS "sqlite_master"" UNION SELECT name FROM (SELECT 'INJECT'||'ED' AS name)";
             -- Let database_list pragma have a 'temp' schema entry
             CREATE TEMP TABLE _table (id);
 
@@ -380,6 +389,7 @@ class Completion(unittest.TestCase):
         candidates = [l.strip() for l in lines[start+1:end]]
         self.assertIn("MixedCase", candidates)
         self.assertIn("_underscore", candidates)
+        self.assertIn("sqlite_master\" UNION SELECT name FROM (SELECT 'INJECT'||'ED' AS name)", candidates)
         self.assertIn("main", candidates)
         self.assertIn("temp", candidates)
 
