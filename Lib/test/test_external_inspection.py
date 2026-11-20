@@ -371,6 +371,9 @@ sock.connect(('localhost', {port}))
                             p.pid, all_threads=True, cache_frames=cache_frames
                         )
 
+                    # Tests asserting on filenames in stack traces need the
+                    # path of the generated script.
+                    p.script_name = script_name
                     yield p, client_socket, make_unwinder
             finally:
                 _cleanup_sockets(client_socket, server_socket)
@@ -1520,23 +1523,18 @@ class TestGetStackTrace(RemoteInspectionTestBase):
         # when running tests in parallel (e.g., -j 20)
         NUM_TASKS = 100
 
-        port = find_unused_port()
-        script = textwrap.dedent(
+        script_body = textwrap.dedent(
             f"""\
             import asyncio
             import os
             import random
             import sys
-            import socket
             from string import ascii_lowercase, digits
             from test.support import socket_helper, SHORT_TIMEOUT
 
             HOST = '127.0.0.1'
             PORT = socket_helper.find_unused_port()
             connections = 0
-
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(('localhost', {port}))
 
             class EchoServerProtocol(asyncio.Protocol):
                 def connection_made(self, transport):
@@ -1582,206 +1580,193 @@ class TestGetStackTrace(RemoteInspectionTestBase):
             """
         )
 
-        with os_helper.temp_dir() as work_dir:
-            script_dir = os.path.join(work_dir, "script_pkg")
-            os.mkdir(script_dir)
+        with self._target_process(script_body) as (p, client_socket, _):
+            script_name = p.script_name
 
-            server_socket = _create_server_socket(port)
-            script_name = _make_test_script(script_dir, "script", script)
-            client_socket = None
-
+            # Wait for NUM_TASKS "ready" signals
             try:
-                with _managed_subprocess([sys.executable, script_name]) as p:
-                    client_socket, _ = server_socket.accept()
-                    server_socket.close()
-                    server_socket = None
+                _wait_for_n_signals(client_socket, b"ready", NUM_TASKS)
+            except RuntimeError as e:
+                self.fail(str(e))
 
-                    # Wait for NUM_TASKS "ready" signals
-                    try:
-                        _wait_for_n_signals(client_socket, b"ready", NUM_TASKS)
-                    except RuntimeError as e:
-                        self.fail(str(e))
+            all_awaited_by = get_all_awaited_by(p.pid)
 
-                    all_awaited_by = get_all_awaited_by(p.pid)
+            # Expected: a list of two elements: 1 thread, 1 interp
+            self.assertEqual(len(all_awaited_by), 2)
+            # Expected: a tuple with the thread ID and the awaited_by list
+            self.assertEqual(len(all_awaited_by[0]), 2)
+            # Expected: no tasks in the fallback per-interp task list
+            self.assertEqual(all_awaited_by[1], (0, []))
 
-                    # Expected: a list of two elements: 1 thread, 1 interp
-                    self.assertEqual(len(all_awaited_by), 2)
-                    # Expected: a tuple with the thread ID and the awaited_by list
-                    self.assertEqual(len(all_awaited_by[0]), 2)
-                    # Expected: no tasks in the fallback per-interp task list
-                    self.assertEqual(all_awaited_by[1], (0, []))
+            entries = all_awaited_by[0][1]
+            # Expected: at least NUM_TASKS pending tasks
+            self.assertGreaterEqual(len(entries), NUM_TASKS)
 
-                    entries = all_awaited_by[0][1]
-                    # Expected: at least NUM_TASKS pending tasks
-                    self.assertGreaterEqual(len(entries), NUM_TASKS)
-
-                    # Check the main task structure
-                    main_stack = [
-                        FrameInfo(
-                            [taskgroups.__file__, ANY, "TaskGroup._aexit", ANY]
-                        ),
-                        FrameInfo(
-                            [taskgroups.__file__, ANY, "TaskGroup.__aexit__", ANY]
-                        ),
-                        FrameInfo([script_name, ANY, "main", ANY]),
+            # Check the main task structure
+            main_stack = [
+                FrameInfo(
+                    [taskgroups.__file__, ANY, "TaskGroup._aexit", ANY]
+                ),
+                FrameInfo(
+                    [taskgroups.__file__, ANY, "TaskGroup.__aexit__", ANY]
+                ),
+                FrameInfo([script_name, ANY, "main", ANY]),
+            ]
+            self.assertIn(
+                TaskInfo(
+                    [ANY, "Task-1", [CoroInfo([main_stack, ANY])], []]
+                ),
+                entries,
+            )
+            self.assertIn(
+                TaskInfo(
+                    [
+                        ANY,
+                        "server task",
+                        [
+                            CoroInfo(
+                                [
+                                    [
+                                        FrameInfo(
+                                            [
+                                                base_events.__file__,
+                                                ANY,
+                                                "Server.serve_forever",
+                                                ANY,
+                                            ]
+                                        )
+                                    ],
+                                    ANY,
+                                ]
+                            )
+                        ],
+                        [
+                            CoroInfo(
+                                [
+                                    [
+                                        FrameInfo(
+                                            [
+                                                taskgroups.__file__,
+                                                ANY,
+                                                "TaskGroup._aexit",
+                                                ANY,
+                                            ]
+                                        ),
+                                        FrameInfo(
+                                            [
+                                                taskgroups.__file__,
+                                                ANY,
+                                                "TaskGroup.__aexit__",
+                                                ANY,
+                                            ]
+                                        ),
+                                        FrameInfo(
+                                            [script_name, ANY, "main", ANY]
+                                        ),
+                                    ],
+                                    ANY,
+                                ]
+                            )
+                        ],
                     ]
-                    self.assertIn(
-                        TaskInfo(
-                            [ANY, "Task-1", [CoroInfo([main_stack, ANY])], []]
-                        ),
-                        entries,
-                    )
-                    self.assertIn(
-                        TaskInfo(
-                            [
-                                ANY,
-                                "server task",
+                ),
+                entries,
+            )
+            self.assertIn(
+                TaskInfo(
+                    [
+                        ANY,
+                        "Task-4",
+                        [
+                            CoroInfo(
                                 [
-                                    CoroInfo(
-                                        [
+                                    [
+                                        FrameInfo(
                                             [
-                                                FrameInfo(
-                                                    [
-                                                        base_events.__file__,
-                                                        ANY,
-                                                        "Server.serve_forever",
-                                                        ANY,
-                                                    ]
-                                                )
-                                            ],
-                                            ANY,
-                                        ]
-                                    )
-                                ],
+                                                tasks.__file__,
+                                                ANY,
+                                                "sleep",
+                                                ANY,
+                                            ]
+                                        ),
+                                        FrameInfo(
+                                            [
+                                                script_name,
+                                                ANY,
+                                                "echo_client",
+                                                ANY,
+                                            ]
+                                        ),
+                                    ],
+                                    ANY,
+                                ]
+                            )
+                        ],
+                        [
+                            CoroInfo(
                                 [
-                                    CoroInfo(
-                                        [
+                                    [
+                                        FrameInfo(
                                             [
-                                                FrameInfo(
-                                                    [
-                                                        taskgroups.__file__,
-                                                        ANY,
-                                                        "TaskGroup._aexit",
-                                                        ANY,
-                                                    ]
-                                                ),
-                                                FrameInfo(
-                                                    [
-                                                        taskgroups.__file__,
-                                                        ANY,
-                                                        "TaskGroup.__aexit__",
-                                                        ANY,
-                                                    ]
-                                                ),
-                                                FrameInfo(
-                                                    [script_name, ANY, "main", ANY]
-                                                ),
-                                            ],
-                                            ANY,
-                                        ]
-                                    )
-                                ],
-                            ]
-                        ),
-                        entries,
-                    )
-                    self.assertIn(
-                        TaskInfo(
-                            [
-                                ANY,
-                                "Task-4",
-                                [
-                                    CoroInfo(
-                                        [
+                                                taskgroups.__file__,
+                                                ANY,
+                                                "TaskGroup._aexit",
+                                                ANY,
+                                            ]
+                                        ),
+                                        FrameInfo(
                                             [
-                                                FrameInfo(
-                                                    [
-                                                        tasks.__file__,
-                                                        ANY,
-                                                        "sleep",
-                                                        ANY,
-                                                    ]
-                                                ),
-                                                FrameInfo(
-                                                    [
-                                                        script_name,
-                                                        ANY,
-                                                        "echo_client",
-                                                        ANY,
-                                                    ]
-                                                ),
-                                            ],
-                                            ANY,
-                                        ]
-                                    )
-                                ],
-                                [
-                                    CoroInfo(
-                                        [
+                                                taskgroups.__file__,
+                                                ANY,
+                                                "TaskGroup.__aexit__",
+                                                ANY,
+                                            ]
+                                        ),
+                                        FrameInfo(
                                             [
-                                                FrameInfo(
-                                                    [
-                                                        taskgroups.__file__,
-                                                        ANY,
-                                                        "TaskGroup._aexit",
-                                                        ANY,
-                                                    ]
-                                                ),
-                                                FrameInfo(
-                                                    [
-                                                        taskgroups.__file__,
-                                                        ANY,
-                                                        "TaskGroup.__aexit__",
-                                                        ANY,
-                                                    ]
-                                                ),
-                                                FrameInfo(
-                                                    [
-                                                        script_name,
-                                                        ANY,
-                                                        "echo_client_spam",
-                                                        ANY,
-                                                    ]
-                                                ),
-                                            ],
-                                            ANY,
-                                        ]
-                                    )
-                                ],
-                            ]
-                        ),
-                        entries,
-                    )
-
-                    # Find tasks awaited by echo_client_spam via TaskGroup
-                    def matches_awaited_by_pattern(task):
-                        if len(task.awaited_by) != 1:
-                            return False
-                        coro = task.awaited_by[0]
-                        if len(coro.call_stack) != 3:
-                            return False
-                        funcnames = [f.funcname for f in coro.call_stack]
-                        return funcnames == [
-                            "TaskGroup._aexit",
-                            "TaskGroup.__aexit__",
-                            "echo_client_spam",
-                        ]
-
-                    tasks_with_awaited = [
-                        task
-                        for task in entries
-                        if matches_awaited_by_pattern(task)
+                                                script_name,
+                                                ANY,
+                                                "echo_client_spam",
+                                                ANY,
+                                            ]
+                                        ),
+                                    ],
+                                    ANY,
+                                ]
+                            )
+                        ],
                     ]
-                    self.assertGreaterEqual(len(tasks_with_awaited), NUM_TASKS)
+                ),
+                entries,
+            )
 
-                    # Final task should be from echo client spam (not on Windows)
-                    if sys.platform != "win32":
-                        self.assertEqual(
-                            tasks_with_awaited[-1].awaited_by,
-                            entries[-1].awaited_by,
-                        )
-            finally:
-                _cleanup_sockets(client_socket, server_socket)
+            # Find tasks awaited by echo_client_spam via TaskGroup
+            def matches_awaited_by_pattern(task):
+                if len(task.awaited_by) != 1:
+                    return False
+                coro = task.awaited_by[0]
+                if len(coro.call_stack) != 3:
+                    return False
+                funcnames = [f.funcname for f in coro.call_stack]
+                return funcnames == [
+                    "TaskGroup._aexit",
+                    "TaskGroup.__aexit__",
+                    "echo_client_spam",
+                ]
+
+            tasks_with_awaited = [
+                task
+                for task in entries
+                if matches_awaited_by_pattern(task)
+            ]
+            self.assertGreaterEqual(len(tasks_with_awaited), NUM_TASKS)
+
+            # Final task should be from echo client spam (not on Windows)
+            if sys.platform != "win32":
+                self.assertEqual(
+                    tasks_with_awaited[-1].awaited_by,
+                    entries[-1].awaited_by,
+                )
 
     @skip_if_not_supported
     @unittest.skipIf(
@@ -1854,16 +1839,11 @@ class TestGetStackTrace(RemoteInspectionTestBase):
         "Test only runs on Linux with process_vm_readv support",
     )
     def test_async_global_awaited_by_from_non_main_thread(self):
-        port = find_unused_port()
-        script = textwrap.dedent(
-            f"""\
+        script_body = textwrap.dedent(
+            """\
             import asyncio
-            import socket
             import threading
             import time
-
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(('localhost', {port}))
 
             async def worker_main():
                 task = asyncio.create_task(
@@ -1871,7 +1851,7 @@ class TestGetStackTrace(RemoteInspectionTestBase):
                     name="worker task",
                 )
                 await asyncio.sleep(0)
-                sock.sendall(f"ready:{{threading.get_native_id()}}\\n".encode())
+                sock.sendall(f"ready:{threading.get_native_id()}\\n".encode())
                 await task
 
             def run_worker_loop():
@@ -1886,41 +1866,26 @@ class TestGetStackTrace(RemoteInspectionTestBase):
             """
         )
 
-        with os_helper.temp_dir() as work_dir:
-            script_dir = os.path.join(work_dir, "script_pkg")
-            os.mkdir(script_dir)
+        with self._target_process(script_body) as (p, client_socket, _):
+            response = _wait_for_signal(client_socket, b"ready:")
+            worker_thread_id = int(
+                response.split(b"ready:", 1)[1].splitlines()[0]
+            )
 
-            server_socket = _create_server_socket(port)
-            script_name = _make_test_script(script_dir, "script", script)
-            client_socket = None
-
-            try:
-                with _managed_subprocess([sys.executable, script_name]) as p:
-                    client_socket, _ = server_socket.accept()
-                    server_socket.close()
-                    server_socket = None
-
-                    response = _wait_for_signal(client_socket, b"ready:")
-                    worker_thread_id = int(
-                        response.split(b"ready:", 1)[1].splitlines()[0]
-                    )
-
-                    for _ in busy_retry(SHORT_TIMEOUT):
-                        all_awaited_by = get_all_awaited_by(p.pid)
-                        if any(
-                            task.task_name == "worker task"
-                            for info in all_awaited_by
-                            if info.thread_id == worker_thread_id
-                            for task in info.awaited_by
-                        ):
-                            break
-                    else:
-                        self.fail(
-                            "get_all_awaited_by() did not report "
-                            "the asyncio task from the non-main thread"
-                        )
-            finally:
-                _cleanup_sockets(client_socket, server_socket)
+            for _ in busy_retry(SHORT_TIMEOUT):
+                all_awaited_by = get_all_awaited_by(p.pid)
+                if any(
+                    task.task_name == "worker task"
+                    for info in all_awaited_by
+                    if info.thread_id == worker_thread_id
+                    for task in info.awaited_by
+                ):
+                    break
+            else:
+                self.fail(
+                    "get_all_awaited_by() did not report "
+                    "the asyncio task from the non-main thread"
+                )
 
     @skip_if_not_supported
     @unittest.skipIf(
@@ -1928,19 +1893,14 @@ class TestGetStackTrace(RemoteInspectionTestBase):
         "Test only runs on Linux with process_vm_readv support",
     )
     def test_async_remote_stack_trace_from_non_main_thread(self):
-        port = find_unused_port()
-        script = textwrap.dedent(
-            f"""\
+        script_body = textwrap.dedent(
+            """\
             import asyncio
-            import socket
             import threading
             import time
 
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(('localhost', {port}))
-
             def blocking_call():
-                sock.sendall(f"ready:{{threading.get_native_id()}}\\n".encode())
+                sock.sendall(f"ready:{threading.get_native_id()}\\n".encode())
                 time.sleep(10_000)
 
             async def worker_task():
@@ -1966,41 +1926,26 @@ class TestGetStackTrace(RemoteInspectionTestBase):
             """
         )
 
-        with os_helper.temp_dir() as work_dir:
-            script_dir = os.path.join(work_dir, "script_pkg")
-            os.mkdir(script_dir)
+        with self._target_process(script_body) as (p, client_socket, _):
+            response = _wait_for_signal(client_socket, b"ready:")
+            worker_thread_id = int(
+                response.split(b"ready:", 1)[1].splitlines()[0]
+            )
 
-            server_socket = _create_server_socket(port)
-            script_name = _make_test_script(script_dir, "script", script)
-            client_socket = None
-
-            try:
-                with _managed_subprocess([sys.executable, script_name]) as p:
-                    client_socket, _ = server_socket.accept()
-                    server_socket.close()
-                    server_socket = None
-
-                    response = _wait_for_signal(client_socket, b"ready:")
-                    worker_thread_id = int(
-                        response.split(b"ready:", 1)[1].splitlines()[0]
-                    )
-
-                    for _ in busy_retry(SHORT_TIMEOUT):
-                        stack_trace = get_async_stack_trace(p.pid)
-                        if any(
-                            task.task_name == "worker task"
-                            for info in stack_trace
-                            if info.thread_id == worker_thread_id
-                            for task in info.awaited_by
-                        ):
-                            break
-                    else:
-                        self.fail(
-                            "get_async_stack_trace() did not report "
-                            "the running asyncio task from the non-main thread"
-                        )
-            finally:
-                _cleanup_sockets(client_socket, server_socket)
+            for _ in busy_retry(SHORT_TIMEOUT):
+                stack_trace = get_async_stack_trace(p.pid)
+                if any(
+                    task.task_name == "worker task"
+                    for info in stack_trace
+                    if info.thread_id == worker_thread_id
+                    for task in info.awaited_by
+                ):
+                    break
+            else:
+                self.fail(
+                    "get_async_stack_trace() did not report "
+                    "the running asyncio task from the non-main thread"
+                )
 
     @skip_if_not_supported
     @unittest.skipIf(
@@ -2434,13 +2379,9 @@ while True:
     )
     @requires_gil_enabled("Free threaded builds don't have an 'active thread'")
     def test_only_active_thread(self):
-        port = find_unused_port()
-        script = textwrap.dedent(
-            f"""\
-            import time, sys, socket, threading
-
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(('localhost', {port}))
+        script_body = textwrap.dedent(
+            """\
+            import time, threading
 
             def worker_thread(name, barrier, ready_event):
                 barrier.wait()
@@ -2462,7 +2403,7 @@ while True:
 
             threads = []
             for i in range(num_threads):
-                t = threading.Thread(target=worker_thread, args=(f"Worker-{{i}}", barrier, ready_event))
+                t = threading.Thread(target=worker_thread, args=(f"Worker-{i}", barrier, ready_event))
                 t.start()
                 threads.append(t)
 
@@ -2473,80 +2414,65 @@ while True:
             """
         )
 
-        with os_helper.temp_dir() as work_dir:
-            script_dir = os.path.join(work_dir, "script_pkg")
-            os.mkdir(script_dir)
+        with self._target_process(script_body) as (p, client_socket, _):
+            # Wait for ready and working signals
+            _wait_for_signal(client_socket, [b"ready", b"working"])
 
-            server_socket = _create_server_socket(port)
-            script_name = _make_test_script(script_dir, "script", script)
-            client_socket = None
-
-            try:
-                with _managed_subprocess([sys.executable, script_name]) as p:
-                    client_socket, _ = server_socket.accept()
-                    server_socket.close()
-                    server_socket = None
-
-                    # Wait for ready and working signals
-                    _wait_for_signal(client_socket, [b"ready", b"working"])
-
-                    # Get stack trace with all threads
-                    unwinder_all = RemoteUnwinder(p.pid, all_threads=True)
-                    for _ in busy_retry(SHORT_TIMEOUT):
-                        with contextlib.suppress(*TRANSIENT_ERRORS):
-                            all_traces = unwinder_all.get_stack_trace()
-                            found = self._find_frame_in_trace(
-                                all_traces,
-                                lambda f: f.funcname == "main_work"
-                                and f.location.lineno > 12,
-                            )
-                            if found:
-                                break
-                    else:
-                        self.fail(
-                            "Main thread did not start its busy work on time"
-                        )
-
-                    # Get stack trace with only GIL holder
-                    unwinder_gil = RemoteUnwinder(
-                        p.pid, only_active_thread=True
+            # Get stack trace with all threads
+            unwinder_all = RemoteUnwinder(p.pid, all_threads=True)
+            for _ in busy_retry(SHORT_TIMEOUT):
+                with contextlib.suppress(*TRANSIENT_ERRORS):
+                    all_traces = unwinder_all.get_stack_trace()
+                    found = self._find_frame_in_trace(
+                        all_traces,
+                        lambda f: f.funcname == "main_work"
+                        and f.location.lineno > 12,
                     )
-                    # Use condition to retry until we capture a thread holding the GIL
-                    # (sampling may catch moments with no GIL holder on slow CI)
-                    gil_traces = _get_stack_trace_with_retry(
-                        unwinder_gil,
-                        condition=lambda t: sum(len(i.threads) for i in t) >= 1,
-                    )
+                    if found:
+                        break
+            else:
+                self.fail(
+                    "Main thread did not start its busy work on time"
+                )
 
-                    # Count threads
-                    total_threads = sum(
-                        len(interp.threads) for interp in all_traces
-                    )
-                    self.assertGreater(total_threads, 1)
+            # Get stack trace with only GIL holder
+            unwinder_gil = RemoteUnwinder(
+                p.pid, only_active_thread=True
+            )
+            # Use condition to retry until we capture a thread holding the GIL
+            # (sampling may catch moments with no GIL holder on slow CI)
+            gil_traces = _get_stack_trace_with_retry(
+                unwinder_gil,
+                condition=lambda t: sum(len(i.threads) for i in t) >= 1,
+            )
 
-                    total_gil_threads = sum(
-                        len(interp.threads) for interp in gil_traces
-                    )
-                    self.assertEqual(total_gil_threads, 1)
+            # Count threads
+            total_threads = sum(
+                len(interp.threads) for interp in all_traces
+            )
+            self.assertGreater(total_threads, 1)
 
-                    # Get the GIL holder thread ID
-                    gil_thread_id = None
-                    for interpreter_info in gil_traces:
-                        if interpreter_info.threads:
-                            gil_thread_id = interpreter_info.threads[
-                                0
-                            ].thread_id
-                            break
+            total_gil_threads = sum(
+                len(interp.threads) for interp in gil_traces
+            )
+            self.assertEqual(total_gil_threads, 1)
 
-                    # Get all thread IDs
-                    all_thread_ids = []
-                    for interpreter_info in all_traces:
-                        for thread_info in interpreter_info.threads:
-                            all_thread_ids.append(thread_info.thread_id)
+            # Get the GIL holder thread ID
+            gil_thread_id = None
+            for interpreter_info in gil_traces:
+                if interpreter_info.threads:
+                    gil_thread_id = interpreter_info.threads[
+                        0
+                    ].thread_id
+                    break
 
-                    self.assertIn(gil_thread_id, all_thread_ids)
-            finally:
-                _cleanup_sockets(client_socket, server_socket)
+            # Get all thread IDs
+            all_thread_ids = []
+            for interpreter_info in all_traces:
+                for thread_info in interpreter_info.threads:
+                    all_thread_ids.append(thread_info.thread_id)
+
+            self.assertIn(gil_thread_id, all_thread_ids)
 
     @skip_if_not_supported
     @unittest.skipIf(
@@ -2840,23 +2766,18 @@ class TestDetectionOfThreadStatus(RemoteInspectionTestBase):
             mode: Profiling mode (PROFILING_MODE_CPU, PROFILING_MODE_GIL, etc.)
             check_condition: Function(statuses, sleeper_tid, busy_tid) -> bool
         """
-        port = find_unused_port()
-        script = textwrap.dedent(
-            f"""\
-            import time, sys, socket, threading
-            import os
-
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(('localhost', {port}))
+        script_body = textwrap.dedent(
+            """\
+            import time, threading
 
             def sleeper():
                 tid = threading.get_native_id()
-                sock.sendall(f'ready:sleeper:{{tid}}\\n'.encode())
+                sock.sendall(f'ready:sleeper:{tid}\\n'.encode())
                 time.sleep(10000)
 
             def busy():
                 tid = threading.get_native_id()
-                sock.sendall(f'ready:busy:{{tid}}\\n'.encode())
+                sock.sendall(f'ready:busy:{tid}\\n'.encode())
                 x = 0
                 while True:
                     x = x + 1
@@ -2873,70 +2794,53 @@ class TestDetectionOfThreadStatus(RemoteInspectionTestBase):
             """
         )
 
-        with os_helper.temp_dir() as work_dir:
-            script_dir = os.path.join(work_dir, "script_pkg")
-            os.mkdir(script_dir)
-
-            server_socket = _create_server_socket(port)
-            script_name = _make_test_script(
-                script_dir, "thread_status_script", script
+        with self._target_process(script_body) as (p, client_socket, _):
+            # Wait for all ready signals and parse TIDs
+            response = _wait_for_signal(
+                client_socket,
+                [b"ready:main", b"ready:sleeper", b"ready:busy"],
             )
-            client_socket = None
 
-            try:
-                with _managed_subprocess([sys.executable, script_name]) as p:
-                    client_socket, _ = server_socket.accept()
-                    server_socket.close()
-                    server_socket = None
+            sleeper_tid = None
+            busy_tid = None
+            for line in response.split(b"\n"):
+                if line.startswith(b"ready:sleeper:"):
+                    try:
+                        sleeper_tid = int(line.split(b":")[-1])
+                    except (ValueError, IndexError):
+                        pass
+                elif line.startswith(b"ready:busy:"):
+                    try:
+                        busy_tid = int(line.split(b":")[-1])
+                    except (ValueError, IndexError):
+                        pass
 
-                    # Wait for all ready signals and parse TIDs
-                    response = _wait_for_signal(
-                        client_socket,
-                        [b"ready:main", b"ready:sleeper", b"ready:busy"],
-                    )
+            self.assertIsNotNone(
+                sleeper_tid, "Sleeper thread id not received"
+            )
+            self.assertIsNotNone(
+                busy_tid, "Busy thread id not received"
+            )
 
-                    sleeper_tid = None
-                    busy_tid = None
-                    for line in response.split(b"\n"):
-                        if line.startswith(b"ready:sleeper:"):
-                            try:
-                                sleeper_tid = int(line.split(b":")[-1])
-                            except (ValueError, IndexError):
-                                pass
-                        elif line.startswith(b"ready:busy:"):
-                            try:
-                                busy_tid = int(line.split(b":")[-1])
-                            except (ValueError, IndexError):
-                                pass
+            # Sample until we see expected thread states
+            statuses = {}
+            unwinder = RemoteUnwinder(
+                p.pid,
+                all_threads=True,
+                mode=mode,
+                skip_non_matching_threads=False,
+            )
+            for _ in busy_retry(SHORT_TIMEOUT):
+                with contextlib.suppress(*TRANSIENT_ERRORS):
+                    traces = unwinder.get_stack_trace()
+                    statuses = self._get_thread_statuses(traces)
 
-                    self.assertIsNotNone(
-                        sleeper_tid, "Sleeper thread id not received"
-                    )
-                    self.assertIsNotNone(
-                        busy_tid, "Busy thread id not received"
-                    )
+                    if check_condition(
+                        statuses, sleeper_tid, busy_tid
+                    ):
+                        break
 
-                    # Sample until we see expected thread states
-                    statuses = {}
-                    unwinder = RemoteUnwinder(
-                        p.pid,
-                        all_threads=True,
-                        mode=mode,
-                        skip_non_matching_threads=False,
-                    )
-                    for _ in busy_retry(SHORT_TIMEOUT):
-                        with contextlib.suppress(*TRANSIENT_ERRORS):
-                            traces = unwinder.get_stack_trace()
-                            statuses = self._get_thread_statuses(traces)
-
-                            if check_condition(
-                                statuses, sleeper_tid, busy_tid
-                            ):
-                                break
-
-                    return statuses, sleeper_tid, busy_tid
-            finally:
-                _cleanup_sockets(client_socket, server_socket)
+            return statuses, sleeper_tid, busy_tid
 
     @unittest.skipIf(
         sys.platform not in ("linux", "darwin", "win32"),
@@ -3300,18 +3204,16 @@ class TestExceptionDetectionScenarios(RemoteInspectionTestBase):
        -> Should NOT have HAS_EXCEPTION (no exception state)
     """
 
-    def _make_single_scenario_script(self, port, scenario):
-        """Create script for a single exception scenario."""
+    def _make_single_scenario_script(self, scenario):
+        """Create script body for a single exception scenario."""
         scenarios = {
-            "except_block": f"""\
-import socket
+            "except_block": """\
 import threading
 import time
 
 def target_thread():
     '''Inside except block - exception info is present'''
-    conn = socket.create_connection(("localhost", {port}))
-    conn.sendall(b"ready:" + str(threading.get_native_id()).encode())
+    sock.sendall(b"ready:" + str(threading.get_native_id()).encode())
     try:
         raise ValueError("test")
     except ValueError:
@@ -3322,15 +3224,13 @@ t = threading.Thread(target=target_thread)
 t.start()
 t.join()
 """,
-            "finally_propagating": f"""\
-import socket
+            "finally_propagating": """\
 import threading
 import time
 
 def target_thread():
     '''Exception propagating through finally - current_exception is set'''
-    conn = socket.create_connection(("localhost", {port}))
-    conn.sendall(b"ready:" + str(threading.get_native_id()).encode())
+    sock.sendall(b"ready:" + str(threading.get_native_id()).encode())
     try:
         try:
             raise ValueError("propagating")
@@ -3345,15 +3245,13 @@ t = threading.Thread(target=target_thread)
 t.start()
 t.join()
 """,
-            "finally_after_except": f"""\
-import socket
+            "finally_after_except": """\
 import threading
 import time
 
 def target_thread():
     '''Finally runs after except handled - exc_info is cleared'''
-    conn = socket.create_connection(("localhost", {port}))
-    conn.sendall(b"ready:" + str(threading.get_native_id()).encode())
+    sock.sendall(b"ready:" + str(threading.get_native_id()).encode())
     try:
         raise ValueError("test")
     except ValueError:
@@ -3366,15 +3264,13 @@ t = threading.Thread(target=target_thread)
 t.start()
 t.join()
 """,
-            "finally_no_exception": f"""\
-import socket
+            "finally_no_exception": """\
 import threading
 import time
 
 def target_thread():
     '''Finally with no exception at all'''
-    conn = socket.create_connection(("localhost", {port}))
-    conn.sendall(b"ready:" + str(threading.get_native_id()).encode())
+    sock.sendall(b"ready:" + str(threading.get_native_id()).encode())
     try:
         pass  # No exception
     finally:
@@ -3392,32 +3288,19 @@ t.join()
     @contextmanager
     def _run_scenario_process(self, scenario):
         """Context manager to run a single scenario and yield thread ID and process."""
-        port = find_unused_port()
-        script = self._make_single_scenario_script(port, scenario)
+        script_body = self._make_single_scenario_script(scenario)
 
-        with os_helper.temp_dir() as tmp_dir:
-            script_file = make_script(tmp_dir, "script", script)
-            server_socket = _create_server_socket(port, backlog=1)
-            client_socket = None
+        with self._target_process(script_body) as (p, client_socket, _):
+            thread_tid = None
 
-            try:
-                with _managed_subprocess([sys.executable, script_file]) as p:
-                    thread_tid = None
+            line = client_socket.recv(1024)
+            if line and line.startswith(b"ready:"):
+                try:
+                    thread_tid = int(line.split(b":")[-1])
+                except (ValueError, IndexError):
+                    pass
 
-                    client_socket, _ = server_socket.accept()
-                    line = client_socket.recv(1024)
-                    if line and line.startswith(b"ready:"):
-                        try:
-                            thread_tid = int(line.split(b":")[-1])
-                        except (ValueError, IndexError):
-                            pass
-
-                    server_socket.close()
-                    server_socket = None
-
-                    yield p, thread_tid
-            finally:
-                _cleanup_sockets(client_socket, server_socket)
+            yield p, thread_tid
 
     def _check_thread_status(
         self, p, thread_tid, condition, condition_name="condition"
