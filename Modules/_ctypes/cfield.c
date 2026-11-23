@@ -48,6 +48,7 @@ Py_ssize_t LOW_BIT(Py_ssize_t offset);
 
 
 /*[clinic input]
+@vectorcall
 @classmethod
 _ctypes.CField.__new__ as PyCField_new
 
@@ -68,7 +69,7 @@ PyCField_new_impl(PyTypeObject *type, PyObject *name, PyObject *proto,
                   Py_ssize_t byte_size, Py_ssize_t byte_offset,
                   Py_ssize_t index, int _internal_use,
                   PyObject *bit_size_obj, PyObject *bit_offset_obj)
-/*[clinic end generated code: output=3f2885ee4108b6e2 input=b343436e33c0d782]*/
+/*[clinic end generated code: output=3f2885ee4108b6e2 input=15762698a7021082]*/
 {
     CFieldObject* self = NULL;
 
@@ -457,6 +458,7 @@ PyCField_repr(PyObject *self)
 
 static PyType_Slot cfield_slots[] = {
     {Py_tp_new, PyCField_new},
+    {Py_tp_vectorcall, PyCField_vectorcall},
     {Py_tp_dealloc, PyCField_dealloc},
     {Py_tp_repr, PyCField_repr},
     {Py_tp_doc, (void *)PyDoc_STR("Structure/Union member")},
