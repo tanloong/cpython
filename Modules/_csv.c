@@ -457,6 +457,19 @@ Dialect_dealloc(PyObject *self)
     Py_DECREF(tp);
 }
 
+static char *dialect_kws[] = {
+    "dialect",
+    "delimiter",
+    "doublequote",
+    "escapechar",
+    "lineterminator",
+    "quotechar",
+    "quoting",
+    "skipinitialspace",
+    "strict",
+    NULL
+};
+
 static _csvstate *
 _csv_state_from_type(PyTypeObject *type, const char *name)
 {
